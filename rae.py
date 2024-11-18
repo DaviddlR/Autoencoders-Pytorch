@@ -39,31 +39,36 @@ class RAE_encoder(nn.Module):
         self.encoder = nn.Sequential(
 
             # First convolution
+            # TODO: leer esto https://stackoverflow.com/questions/62166719/padding-same-conversion-to-pytorch-padding 
+            # Para conv2d - padding=1
+            # Para maxpool - padding = 0
             nn.Conv2d(in_channels=self.inputChannel, out_channels=self.numberOfFilters, kernel_size=(3,3), padding="same"),
             nn.ReLU(),
-            nn.MaxPool2d((2,2), padding="same"),
+            nn.MaxPool2d((2,2), padding=0),
 
             # Second convolution
             #nn.Conv2d(self.numberOfFilters, self.numberOfFilters/2, (3,3), padding="same"),
             nn.Conv2d(int(self.numberOfFilters), int(self.numberOfFilters/2), (3,3), padding="same"),
             nn.ReLU(),
-            nn.MaxPool2d((2,2), padding="same"),
+            nn.MaxPool2d((2,2), padding=0),
 
             # Third convolution
             nn.Conv2d(int(self.numberOfFilters/2), int(self.numberOfFilters/4), (3,3), padding="same"),
             nn.ReLU(),
-            nn.MaxPool2d((2,2), padding="same"),
+            nn.MaxPool2d((2,2), padding=0),
 
             # Fourth convolution
             nn.Conv2d(int(self.numberOfFilters/4), int(self.numberOfFilters/8), (3,3), padding="same"),
             nn.ReLU(),
-            nn.MaxPool2d((2,2), padding="same"),
+            nn.MaxPool2d((2,2), padding=0),
 
         )
 
     # Definimos el método forward, que se ejecuta en cada paso de entrenamiento / test
     def forward(self, input_):
         encoded = self.encoder(input_)
+
+        print("len encoded: ", len(encoded))
         return encoded
     
 
@@ -82,7 +87,8 @@ class RAE_latent(nn.Module):
         self.numberOfFilters = numberOfFilters
 
         # TODO: 2**numberOfConvolutions /// 2**(numberOfConvolutions-1)
-        self.features = int((input_shape[0] / 2**4) * (self.input_shape[1] / 2**4) * self.numberOfFilters/2**3)
+        self.features = int((input_shape[1] / 2**4) * (self.input_shape[2] / 2**4) * self.numberOfFilters/2**3)
+        print(self.features)
 
         self.latentSpace = nn.Sequential(
             nn.Flatten(),
@@ -95,7 +101,9 @@ class RAE_latent(nn.Module):
 
     # Definimos el método forward, que se ejecuta en cada paso de entrenamiento / test
     def forward(self, input_):
+        print("Len latent input: ", len(input_))
         latent = self.latentSpace(input_)
+        print("Len latent output: ", len(latent))
 
         return latent
 
@@ -106,6 +114,9 @@ class RAE_latent(nn.Module):
         # return reshaped
     
 
+# TODO: Leer https://www.reddit.com/r/learnmachinelearning/comments/ggyz05/why_are_upsamplingconvolutions_better_than/
+# Es una justificación para usar capas convolucionales en lugar de transpose ??
+# Tendría sentido usar transpose si no hubiera upsampling, pero habiendo da igual usar transpose o conv2d normales
 class RAE_decoder(nn.Module):
 
     def __init__(self, input_shape, inputChannel=3, numberOfFilters=192):
@@ -119,33 +130,40 @@ class RAE_decoder(nn.Module):
         self.decoder = nn.Sequential(
             
             # First convolution
-            nn.ConvTranspose2d(in_channels=int(self.numberOfFilters/8), out_channels=int(self.numberOfFilters/8), kernel_size=(3,3), padding="same"),
+            #nn.ConvTranspose2d(in_channels=int(self.numberOfFilters/8), out_channels=int(self.numberOfFilters/8), kernel_size=(3,3), padding="same"),
+            nn.Conv2d(in_channels=int(self.numberOfFilters/8), out_channels=int(self.numberOfFilters/8), kernel_size=(3,3), padding="same"),
             nn.ReLU(),
             nn.Upsample(scale_factor=2),
 
             # Second convolution
-            nn.ConvTranspose2d(int(self.numberOfFilters/8), int(self.numberOfFilters/4), (3,3), padding="same"),
+            #nn.ConvTranspose2d(int(self.numberOfFilters/8), int(self.numberOfFilters/4), (3,3), padding="same"),
+            nn.Conv2d(int(self.numberOfFilters/8), int(self.numberOfFilters/4), (3,3), padding="same"),
             nn.ReLU(),
             nn.Upsample(scale_factor=2),
 
             # Third convolution
-            nn.ConvTranspose2d(int(self.numberOfFilters/4), int(self.numberOfFilters/2), (3,3), padding="same"),
+            #nn.ConvTranspose2d(int(self.numberOfFilters/4), int(self.numberOfFilters/2), (3,3), padding="same"),
+            nn.Conv2d(int(self.numberOfFilters/4), int(self.numberOfFilters/2), (3,3), padding="same"),
             nn.ReLU(),
             nn.Upsample(scale_factor=2),
 
             # Fourth convolution
-            nn.ConvTranspose2d(int(self.numberOfFilters/2), self.numberOfFilters, (3,3), padding="same"),
+            #nn.ConvTranspose2d(int(self.numberOfFilters/2), self.numberOfFilters, (3,3), padding="same"),
+            nn.Conv2d(int(self.numberOfFilters/2), self.numberOfFilters, (3,3), padding="same"),
             nn.ReLU(),
             nn.Upsample(scale_factor=2),
 
             # Last convolution to generate the reconstruction with the correct shape
-            nn.ConvTranspose2d(self.numberOfFilters, self.inputChannel, (3,3), padding="same"),
+            #nn.ConvTranspose2d(self.numberOfFilters, self.inputChannel, (3,3), padding="same"),
+            nn.Conv2d(self.numberOfFilters, self.inputChannel, (3,3), padding="same"),
             nn.Sigmoid(),
         )
 
     def forward(self, input_):
+        print("Len decoder input: ", len(input_))
 
-        reshaped = torch.reshape(input_, ((self.input_shape[1] / 2**4), (self.input_shape[1] / 2**4), (self.numberOfFilters/2**3)))
+        # 16 por el batch size
+        reshaped = torch.reshape(input_, (16, int(self.numberOfFilters/2**3), int(self.input_shape[1] / 2**4), int(self.input_shape[2] / 2**4)))
 
         decoded = self.decoder(reshaped)
         return decoded
@@ -203,6 +221,7 @@ class RobustAutoencoder(L.LightningModule):
 
         # Tomamos la entrada
         entrada, etiqueta = batch
+        entrada = entrada.float()
 
         # Aquí habría que ver si hay que hacer preprocesamiento adicional (transformar a vector, ...)
 
