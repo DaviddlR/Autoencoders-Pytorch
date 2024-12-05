@@ -14,7 +14,7 @@ print(autoencoder)
 wwfDataset_train = DataClass("./train", "./wwf.csv")
 
 # Creamos el dataloader
-wwfDataloader_train = DataLoader(wwfDataset_train, batch_size=16, num_workers=15)
+wwfDataloader_train = DataLoader(wwfDataset_train, batch_size=16, num_workers=15, drop_last=True)
 
 # Creamos el trainer
 trainer = L.Trainer(max_epochs=10)

@@ -67,8 +67,6 @@ class RAE_encoder(nn.Module):
     # Definimos el método forward, que se ejecuta en cada paso de entrenamiento / test
     def forward(self, input_):
         encoded = self.encoder(input_)
-
-        print("len encoded: ", len(encoded))
         return encoded
     
 
@@ -88,7 +86,6 @@ class RAE_latent(nn.Module):
 
         # TODO: 2**numberOfConvolutions /// 2**(numberOfConvolutions-1)
         self.features = int((input_shape[1] / 2**4) * (self.input_shape[2] / 2**4) * self.numberOfFilters/2**3)
-        print(self.features)
 
         self.latentSpace = nn.Sequential(
             nn.Flatten(),
@@ -101,9 +98,7 @@ class RAE_latent(nn.Module):
 
     # Definimos el método forward, que se ejecuta en cada paso de entrenamiento / test
     def forward(self, input_):
-        print("Len latent input: ", len(input_))
         latent = self.latentSpace(input_)
-        print("Len latent output: ", len(latent))
 
         return latent
 
@@ -160,7 +155,6 @@ class RAE_decoder(nn.Module):
         )
 
     def forward(self, input_):
-        print("Len decoder input: ", len(input_))
 
         # 16 por el batch size
         reshaped = torch.reshape(input_, (16, int(self.numberOfFilters/2**3), int(self.input_shape[1] / 2**4), int(self.input_shape[2] / 2**4)))
@@ -186,9 +180,11 @@ class CorrentropyLoss(nn.Module):
     def __init__(self):
         super(CorrentropyLoss, self).__init__()
 
+        self.npi = torch.tensor(2*np.pi)
+
     
     def robust_kernel(self, alpha, sigma=0.2):
-        return 1 / ( (torch.sqrt(2*np.pi)) * sigma) * torch.exp(-1 * torch.square(alpha) / (2 * sigma * sigma))
+        return 1 / ( (torch.sqrt(self.npi)) * sigma) * torch.exp(-1 * torch.square(alpha) / (2 * sigma * sigma))
 
     def forward(self, y_true, y_pred):
         return -1 * torch.mean(self.robust_kernel(y_pred - y_true))
@@ -236,6 +232,8 @@ class RobustAutoencoder(L.LightningModule):
 
         # Calculamos la pérdida (función correntropy para RAE)
         loss = self.robustLoss(entrada, decoded)
+
+        self.log("Training loss: ", loss, on_step=True, on_epoch=True, prog_bar=True)
 
         return loss
     

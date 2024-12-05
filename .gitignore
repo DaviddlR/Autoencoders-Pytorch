@@ -187,3 +187,5 @@ lightning_logs/
 pruebas.py
 
 *.csv
+
+MNIST
